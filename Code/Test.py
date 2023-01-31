@@ -197,7 +197,7 @@ def main():
     Parser.add_argument(
         "--ModelPath",
         dest="ModelPath",
-        default="../Checkpoints_l2_square/29model.ckpt",
+        default="../Checkpoints_l2_square/19model.ckpt",
         help="Path to load latest model from, Default:ModelPath",
     )
     Parser.add_argument(

@@ -95,7 +95,7 @@ class Net(nn.Module):
             nn.Conv2d(6, 64, 3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.Dropout2d(0.5),
+            # nn.Dropout2d(0.5),
             nn.Conv2d(64, 64, 3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
@@ -123,6 +123,7 @@ class Net(nn.Module):
             nn.Conv2d(128, 128, 3, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(),
+            nn.Dropout2d(0.5),
 
             nn.Flatten(), 
             nn.Linear(128*16*16, 1024),

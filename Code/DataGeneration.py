@@ -48,7 +48,7 @@ def dataGeneration(imgPath, patchSize = 128, pertubation = 32):
 
     return patch, transformedPatch, H4Pt
 
-labelWriter = open("./TxtFiles/LabelsTrainSupervised.txt", 'a')
+labelWriter = open("../Code/TxtFiles/LabelsTrainSupervised.txt", 'a')
 for i in range(1, 5001):
     imgPath = "../Data/Train/{}.jpg".format(i)
     patchSize = 128
