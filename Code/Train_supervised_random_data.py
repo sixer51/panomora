@@ -41,6 +41,7 @@ import time
 from Misc.MiscUtils import *
 from Misc.DataUtils import *
 from torchvision.transforms import ToTensor
+from torchvision import transforms
 import argparse
 import shutil
 import string
@@ -48,8 +49,20 @@ from termcolor import colored, cprint
 import math as m
 from tqdm import tqdm
 from DataGeneration import dataGeneration
+import visdom
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+layoutopts = {'plotly': {'yaxis': {'type': 'log','autorange': True}}}
+vis = visdom.Visdom()
+loss_window = vis.line(
+    Y=torch.zeros((1)).cpu(),
+    X=torch.zeros((1)).cpu(),
+    opts=dict(xlabel='epoch',ylabel='Loss',title='training loss',legend=['Loss'],layoutopts = layoutopts))
+
+# transform_norm = transforms.Compose([
+#     transforms.ToTensor(),
+#     transforms.Normalize(mean, std)
+# ])
 
 def GenerateBatch(BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatchSize):
     """
@@ -91,8 +104,25 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatc
         # Coordinates = TrainCoordinates[RandIdx - 1]
 
         # Append All Images and Mask
-        PatchABatch.append(torch.from_numpy(patchA))
-        PatchBBatch.append(torch.from_numpy(patchB))
+        patchA = torch.from_numpy(np.float32(patchA))
+        patchA_mean = patchA.mean(dim=[0,1])
+        patchA_std = patchA.std(dim=[0,1])
+        patchA_transform = transforms.Compose([
+                        transforms.Normalize(mean=[0.5,0.5,0.5],std=[0.5,0.5,0.5])
+                    ])
+        # patchA_transform = transforms.Normalize(patchA_mean,patchA_std)
+        patchA = patchA.view(3,128,128)
+        patchA = patchA_transform(patchA)
+        patchA = patchA.view(128,128,3)
+        patchB = torch.from_numpy(np.float32(patchB))
+        patchB_mean = patchB.mean(dim=[0,1])
+        patchB_std = patchB.std(dim=[0,1])
+        patchB_transform = transforms.Normalize(mean=[0.5,0.5,0.5],std=[0.5,0.5,0.5])
+        patchB = patchB.view(3,128,128)
+        patchB = patchB_transform(patchB)
+        patchB = patchB.view(128,128,3)
+        PatchABatch.append(patchA)
+        PatchBBatch.append(patchB)
         CoordinatesBatch.append(torch.tensor(Coordinates))
 
     return torch.stack(PatchABatch), torch.stack(PatchBBatch), torch.stack(CoordinatesBatch).to(device)
@@ -152,7 +182,7 @@ def TrainOperation(
     # Fill your optimizer of choice here!
     ###############################################
     # Optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
-    # Optimizer = torch.optim.SGD(model.parameters(), lr=0.005)
+    # Optimizer = torch.optim.SGD(model.parameters(), lr=0.005,momentum=0.9)
     Optimizer = AdamW(model.parameters(), lr = 0.005)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(Optimizer, milestones=[15, 25], gamma=0.1)
 
@@ -218,6 +248,7 @@ def TrainOperation(
                 result = model.validation_step(Batch)
             model.epoch_end(Epochs + 1, Epochs*NumIterationsPerEpoch + PerEpochCounter, result)
             loss_this_epoch += result["val_loss"]
+            vis.line(X=torch.ones((1,1)).cpu()*Epochs*NumIterationsPerEpoch + PerEpochCounter,Y=torch.Tensor([LossThisBatch]).unsqueeze(0).cpu(),win=loss_window,update='append')
             # Tensorboard
             Writer.add_scalar(
                 "LossEveryIter",
@@ -242,8 +273,8 @@ def TrainOperation(
 
         # Update loss_all
         loss_all.append(loss_this_epoch.item() / (64*NumIterationsPerEpoch))
-
-        # scheduler.step()
+        
+        scheduler.step()
 
     print(loss_all)
     epochs = np.arange(1, NumEpochs + 1)
