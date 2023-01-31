@@ -23,7 +23,7 @@ import torchvision
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import datasets, transforms
 from torch.optim import AdamW
-from Network.Network_supervised_random_data import HomographyModel
+from Network.Network_supervised_random_data import HomographyModel, weight_init
 import cv2
 import sys
 import os
@@ -57,7 +57,12 @@ vis = visdom.Visdom()
 loss_window = vis.line(
     Y=torch.zeros((1)).cpu(),
     X=torch.zeros((1)).cpu(),
-    opts=dict(xlabel='epoch',ylabel='Loss',title='training loss',legend=['Loss'],layoutopts = layoutopts))
+    opts=dict(xlabel='Iteration',ylabel='Loss',title='training loss',legend=['Loss'],layoutopts = layoutopts))
+
+val_loss_window = vis.line(
+    Y=torch.zeros((1)).cpu(),
+    X=torch.zeros((1)).cpu(),
+    opts=dict(xlabel='Iteration',ylabel='Loss',title='validation loss',legend=['Loss'],layoutopts = layoutopts))
 
 # transform_norm = transforms.Compose([
 #     transforms.ToTensor(),
@@ -80,6 +85,7 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatc
     """
     PatchABatch = []
     PatchBBatch = []
+    PatchBatch = []
     CoordinatesBatch = []
 
     ImageNum = 0
@@ -90,7 +96,7 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatc
         # print(len(DirNamesTrain), len(TrainCoordinates))
 
         RandImageName = BasePath + os.sep + DirNamesTrain[RandIdx] + ".jpg"
-        patchA, patchB, Coordinates = dataGeneration(RandImageName)
+        patchA, patchB, Coordinates, _ = dataGeneration(RandImageName)
 
         # RandPatchA = BasePath + "/data_patch_train/patchA_"+ str(RandIdx) + ".jpg"
         # RandPatchB = BasePath + "/data_patch_train/patchB_"+ str(RandIdx) + ".jpg"
@@ -104,28 +110,34 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatc
         # Coordinates = TrainCoordinates[RandIdx - 1]
 
         # Append All Images and Mask
-        patchA = torch.from_numpy(np.float32(patchA))
-        patchA_mean = patchA.mean(dim=[0,1])
-        patchA_std = patchA.std(dim=[0,1])
-        patchA_transform = transforms.Compose([
-                        transforms.Normalize(mean=[0.5,0.5,0.5],std=[0.5,0.5,0.5])
-                    ])
-        # patchA_transform = transforms.Normalize(patchA_mean,patchA_std)
-        patchA = patchA.view(3,128,128)
-        patchA = patchA_transform(patchA)
-        patchA = patchA.view(128,128,3)
-        patchB = torch.from_numpy(np.float32(patchB))
-        patchB_mean = patchB.mean(dim=[0,1])
-        patchB_std = patchB.std(dim=[0,1])
-        patchB_transform = transforms.Normalize(mean=[0.5,0.5,0.5],std=[0.5,0.5,0.5])
-        patchB = patchB.view(3,128,128)
-        patchB = patchB_transform(patchB)
-        patchB = patchB.view(128,128,3)
-        PatchABatch.append(patchA)
-        PatchBBatch.append(patchB)
+        # patchA = torch.from_numpy(np.float32(patchA))
+        # patchA_mean = patchA.mean(dim=[0,1])
+        # patchA_std = patchA.std(dim=[0,1])
+        # patchA_transform = transforms.Compose([
+        #                 transforms.Normalize(mean=[0.5,0.5,0.5],std=[0.5,0.5,0.5])
+        #             ])
+        # # patchA_transform = transforms.Normalize(patchA_mean,patchA_std)
+        # patchA = patchA.view(3,128,128)
+        # patchA = patchA_transform(patchA)
+        # # patchA = patchA.view(128,128,3)
+
+        # patchB = torch.from_numpy(np.float32(patchB))
+        # patchB_mean = patchB.mean(dim=[0,1])
+        # patchB_std = patchB.std(dim=[0,1])
+        # patchB_transform = transforms.Normalize(mean=[0.5,0.5,0.5],std=[0.5,0.5,0.5])
+        # patchB = patchB.view(3,128,128)
+        # patchB = patchB_transform(patchB)
+        # # patchB = patchB.view(128,128,3)
+
+        # PatchABatch.append(patchA)
+        # PatchBBatch.append(patchB)
+        patchs = np.dstack((patchA, patchB))
+        PatchBatch.append(torch.from_numpy(np.float32(patchs)))
+
         CoordinatesBatch.append(torch.tensor(Coordinates))
 
-    return torch.stack(PatchABatch), torch.stack(PatchBBatch), torch.stack(CoordinatesBatch).to(device)
+    # return torch.stack(PatchABatch), torch.stack(PatchBBatch), torch.stack(CoordinatesBatch).to(device)
+    return torch.stack(PatchBatch).to(device), torch.stack(CoordinatesBatch).to(device)
 
 
 def PrettyPrint(NumEpochs, DivTrain, MiniBatchSize, NumTrainSamples, LatestFile):
@@ -176,13 +188,14 @@ def TrainOperation(
     """
     # Predict output with forward pass
     model = HomographyModel()
+    model.apply(weight_init)
     model.to(device)
 
     ###############################################
     # Fill your optimizer of choice here!
     ###############################################
     # Optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
-    # Optimizer = torch.optim.SGD(model.parameters(), lr=0.005,momentum=0.9)
+    # Optimizer = torch.optim.SGD(model.parameters(), lr=0.001,momentum=0.9)
     Optimizer = AdamW(model.parameters(), lr = 0.005)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(Optimizer, milestones=[15, 25], gamma=0.1)
 
@@ -204,6 +217,9 @@ def TrainOperation(
     for Epochs in tqdm(range(StartEpoch, NumEpochs)):
         NumIterationsPerEpoch = int(NumTrainSamples / MiniBatchSize / DivTrain)
         loss_this_epoch = 0
+        # Batch = GenerateBatch(
+        #     BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatchSize
+        # )
         for PerEpochCounter in tqdm(range(NumIterationsPerEpoch)):
             # I1Batch, CoordinatesBatch = GenerateBatch(
             Batch = GenerateBatch(
@@ -212,43 +228,27 @@ def TrainOperation(
 
             # Predict output with forward pass
             # torch.cuda.empty_cache()
+            print("training")
             model.train()
+            Optimizer.zero_grad()
             LossThisBatch = model.training_step(Batch)
             # PredicatedCoordinatesBatch = model(I1Batch)
             # LossThisBatch = LossFn(PredicatedCoordinatesBatch, CoordinatesBatch)
 
-            Optimizer.zero_grad()
+            # Optimizer.zero_grad()
             LossThisBatch.backward()
             Optimizer.step()
 
-            # Save checkpoint every some SaveCheckPoint's iterations
-            # if PerEpochCounter % SaveCheckPoint == 0:
-            #     # Save the Model learnt in this epoch
-            #     SaveName = (
-            #         CheckPointPath
-            #         + str(Epochs)
-            #         + "a"
-            #         + str(PerEpochCounter)
-            #         + "model.ckpt"
-            #     )
-
-            #     torch.save(
-            #         {
-            #             "epoch": Epochs,
-            #             "model_state_dict": model.state_dict(),
-            #             "optimizer_state_dict": Optimizer.state_dict(),
-            #             "loss": LossThisBatch,
-            #         },
-            #         SaveName,
-            #     )
-            #     print("\n" + SaveName + " Model Saved...")
-
+            print("validating")
             model.eval()
             with torch.no_grad():
                 result = model.validation_step(Batch)
-            model.epoch_end(Epochs + 1, Epochs*NumIterationsPerEpoch + PerEpochCounter, result)
+
+            # model.iteration_end(Epochs + 1, Epochs*NumIterationsPerEpoch + PerEpochCounter, MiniBatchSize, result)
             loss_this_epoch += result["val_loss"]
-            vis.line(X=torch.ones((1,1)).cpu()*Epochs*NumIterationsPerEpoch + PerEpochCounter,Y=torch.Tensor([LossThisBatch]).unsqueeze(0).cpu(),win=loss_window,update='append')
+            vis.line(X=torch.ones((1,1)).cpu()*Epochs*NumIterationsPerEpoch + PerEpochCounter,Y=torch.Tensor([LossThisBatch]).unsqueeze(0).cpu() / MiniBatchSize,win=loss_window,update='append')
+            vis.line(X=torch.ones((1,1)).cpu()*Epochs*NumIterationsPerEpoch + PerEpochCounter,Y=torch.Tensor([result["val_loss"]]).unsqueeze(0).cpu()  / MiniBatchSize,win=val_loss_window,update='append')
+            
             # Tensorboard
             Writer.add_scalar(
                 "LossEveryIter",
@@ -272,16 +272,16 @@ def TrainOperation(
         print("\n" + SaveName + " Model Saved...")
 
         # Update loss_all
-        loss_all.append(loss_this_epoch.item() / (64*NumIterationsPerEpoch))
+        # loss_all.append(loss_this_epoch.item() / (MiniBatchSize*NumIterationsPerEpoch))
         
         scheduler.step()
 
-    print(loss_all)
-    epochs = np.arange(1, NumEpochs + 1)
-    plt.plot(epochs, loss_all)
-    plt.ylabel("Train loss")
-    plt.xlabel("Epochs")
-    plt.show()
+    # print(loss_all)
+    # epochs = np.arange(1, NumEpochs + 1)
+    # plt.plot(epochs, loss_all)
+    # plt.ylabel("Train loss")
+    # plt.xlabel("Epochs")
+    # plt.show()
 
 
 def main():

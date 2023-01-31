@@ -102,7 +102,7 @@ def TestOperation(ModelPath):
 
     # OutSaveT = open(LabelsPathPred, "w")
     EPE_all = []
-    for count in tqdm(range(1000)):
+    for count in tqdm(range(10)):
         # Img, Label = TestSet[count]
         # Img, ImgOrg = ReadImages(Img)
         # PredT = torch.argmax(model(Img)).item()
@@ -110,18 +110,30 @@ def TestOperation(ModelPath):
         # read image
         RandImageName = "../Data/Val/{}.jpg".format(count + 1)
         # print(RandImageName)
-        patchA, patchB, Coordinates = dataGeneration(RandImageName)
+        patchA, patchB, H4Pts, cornersA = dataGeneration(RandImageName)
         patchA = torch.from_numpy(np.expand_dims(patchA, axis=0))
         patchB = torch.from_numpy(np.expand_dims(patchB, axis=0))
-        Coordinates = torch.tensor(Coordinates)
+        H4Pts = torch.tensor(H4Pts)
 
         model.eval()
         with torch.no_grad():
             Pred = model(patchA, patchB)
-        EPE = torch.sum(torch.linalg.norm(torch.sub(Pred.to("cpu"), Coordinates), dim = 1)).item()
+        EPE = torch.sum(torch.linalg.norm(torch.sub(Pred.to("cpu"), H4Pts), dim = 1)).item()
         # accuracy = Accuracy(Pred.to("cpu").detach().numpy(), Coordinates.detach().numpy())
         print("idx: {}, error = {}".format(count, EPE))
         EPE_all.append(EPE)
+
+        img_w_corner = cv2.imread(RandImageName)
+        cornersB = cornersA + np.reshape(H4Pts.numpy(), (4,2))
+        PredCornersB = cornersA + np.reshape(Pred.to("cpu").detach().numpy(), (4,2))
+        print(Pred.to("cpu").detach().numpy())
+
+        isClosed = True
+        thickness = 2
+        img_w_corner = cv2.polylines(img_w_corner, [cornersA.astype(int)], isClosed, (255, 0, 0), thickness)
+        img_w_corner = cv2.polylines(img_w_corner, [cornersB.astype(int)], isClosed, (0, 0, 255), thickness)
+        img_w_corner = cv2.polylines(img_w_corner, [PredCornersB.astype(int)], isClosed, (0, 255, 0), thickness)
+        cv2.imwrite("../Data/val_result/{}.jpg".format(count + 1), img_w_corner)
 
         # OutSaveT.write(str(PredT) + "\n")
     # OutSaveT.close()
@@ -197,7 +209,7 @@ def main():
     Parser.add_argument(
         "--ModelPath",
         dest="ModelPath",
-        default="../Checkpoints_l2_square/19model.ckpt",
+        default="../Checkpoints_l2_square/1model.ckpt",
         help="Path to load latest model from, Default:ModelPath",
     )
     Parser.add_argument(

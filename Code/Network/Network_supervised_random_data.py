@@ -34,9 +34,15 @@ def LossFn(homography, predHomography):
     # print(torch.sub(predHomography, homography))
     # print(torch.linalg.norm(torch.sub(predHomography, homography), dim = 1).size())
 
-    # return torch.sum(torch.linalg.norm(torch.sub(predHomography, homography), dim = 1))
-    # return torch.sum(torch.linalg.norm(torch.sub(predHomography, homography), dim = 1))
-    return torch.sum(torch.linalg.norm(torch.sub(predHomography, homography) ** 2, dim = 1))
+    print(predHomography[0])
+    print(homography[0])
+    # MSE = nn.MSELoss()
+    # return MSE(homography, predHomography)
+    # loss = torch.sum(torch.sub(predHomography, homography))
+    # print(loss)
+    # return loss
+    return torch.sum(torch.linalg.norm(torch.sub(predHomography, homography), dim = 1))
+    # return torch.sum(torch.linalg.norm(torch.sub(predHomography, homography) ** 2, dim = 1))
 
 
 class HomographyModel(nn.Module):
@@ -50,16 +56,20 @@ class HomographyModel(nn.Module):
         return self.model(a, b)
 
     def training_step(self, batch):
-        patchA, patchB, homography = batch
-        predHomography = self.model(patchA, patchB) # get predicted homography
+        # patchA, patchB, homography = batch
+        # predHomography = self.model(patchA, patchB)
+        patchs, homography = batch
+        predHomography = self.model(patchs)
         loss = LossFn(homography, predHomography)
         logs = {"loss": loss}
         # return {"loss": loss, "log": logs}
         return loss
 
     def validation_step(self, batch):
-        patchA, patchB, homography = batch
-        predHomography = self.model(patchA, patchB) # get predicted homography
+        # patchA, patchB, homography = batch
+        # predHomography = self.model(patchA, patchB)
+        patchs, homography = batch
+        predHomography = self.model(patchs)
         loss = LossFn(homography, predHomography)
         # img_a, patch_a, patch_b, corners, gt = batch
         # delta = self.model(patch_a, patch_b)
@@ -71,10 +81,10 @@ class HomographyModel(nn.Module):
         logs = {"val_loss": avg_loss}
         return {"avg_val_loss": avg_loss, "log": logs}
 
-    def epoch_end(self, epoch, iteration, result):
+    def iteration_end(self, epoch, iteration, miniBatchSize, result):
         print(result)
         loss = result["val_loss"].item()
-        avg_loss = loss / 64
+        avg_loss = loss / miniBatchSize
         # avg_loss = torch.stack([x["val_loss"] for x in result]).mean()
         print("Epoch [{}], iteration [{}], loss: {:.4f}, avg_loss: {:.4f}, ".format(epoch, iteration, loss, avg_loss))
 
@@ -92,7 +102,7 @@ class Net(nn.Module):
         # Fill your network initialization of choice here!
         #############################
         self.network = nn.Sequential(
-            nn.Conv2d(6, 64, 3, padding=1),
+            nn.Conv2d(2, 64, 3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
             # nn.Dropout2d(0.5),
@@ -123,12 +133,12 @@ class Net(nn.Module):
             nn.Conv2d(128, 128, 3, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.Dropout2d(0.5),
+            # nn.Dropout2d(0.5),
 
             nn.Flatten(), 
             nn.Linear(128*16*16, 1024),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
             nn.Linear(1024, 8))
 
         # self.network = nn.Sequential(
@@ -172,7 +182,8 @@ class Net(nn.Module):
         #     # nn.ReLU(),
         #     nn.Linear(1024, 8))
 
-    def forward(self, xa, xb):
+    # def forward(self, xa, xb):
+    def forward(self, x):
         """
         Input:
         xa is a MiniBatch of the image a
@@ -184,15 +195,19 @@ class Net(nn.Module):
         # Fill your network structure of choice here!
         #############################
 
-        #stack image a and b
-        patchA = np.float32(xa)
-        patchA = np.swapaxes(patchA, 1, 3)
-        patchB = np.float32(xb)
-        patchB = np.swapaxes(patchB, 1, 3)
+        # x = torch.cat((xa, xb), dim=1).to(device)
 
-        x = np.hstack((patchA, patchB))
-        x = torch.from_numpy(x).to(device)
-
+        x = x.permute(0,3,1,2).float()
         out = self.network(x)
 
         return out
+
+def weight_init(m):
+    if isinstance(m, nn.Linear):
+        nn.init.xavier_normal_(m.weight)
+        nn.init.constant_(m.bias, 0)
+    elif isinstance(m, nn.Conv2d):
+        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+    elif isinstance(m, nn.BatchNorm2d):
+        nn.init.constant_(m.weight, 1)
+        nn.init.constant_(m.bias, 0)
