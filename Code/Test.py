@@ -102,7 +102,7 @@ def TestOperation(ModelPath):
 
     # OutSaveT = open(LabelsPathPred, "w")
     EPE_all = []
-    for count in tqdm(range(10)):
+    for count in tqdm(range(30)):
         # Img, Label = TestSet[count]
         # Img, ImgOrg = ReadImages(Img)
         # PredT = torch.argmax(model(Img)).item()
@@ -111,13 +111,16 @@ def TestOperation(ModelPath):
         RandImageName = "../Data/Val/{}.jpg".format(count + 1)
         # print(RandImageName)
         patchA, patchB, H4Pts, cornersA = dataGeneration(RandImageName)
-        patchA = torch.from_numpy(np.expand_dims(patchA, axis=0))
-        patchB = torch.from_numpy(np.expand_dims(patchB, axis=0))
+        patchs = np.dstack((patchA, patchB))
+        patchs = torch.from_numpy(np.expand_dims(patchs, axis=0)).to(device)
+        # patchA = torch.from_numpy(np.expand_dims(patchA, axis=0))
+        # patchB = torch.from_numpy(np.expand_dims(patchB, axis=0))
         H4Pts = torch.tensor(H4Pts)
 
         model.eval()
         with torch.no_grad():
-            Pred = model(patchA, patchB)
+            # Pred = model(patchA, patchB)
+            Pred = model(patchs)
         EPE = torch.sum(torch.linalg.norm(torch.sub(Pred.to("cpu"), H4Pts), dim = 1)).item()
         # accuracy = Accuracy(Pred.to("cpu").detach().numpy(), Coordinates.detach().numpy())
         print("idx: {}, error = {}".format(count, EPE))
@@ -209,7 +212,7 @@ def main():
     Parser.add_argument(
         "--ModelPath",
         dest="ModelPath",
-        default="../Checkpoints_l2_square/1model.ckpt",
+        default="../Checkpoints_l2_square/26model.ckpt",
         help="Path to load latest model from, Default:ModelPath",
     )
     Parser.add_argument(

@@ -45,7 +45,7 @@ def dataGeneration(imgPath, patchSize = 128, pertubation = 32):
     transformedPatch = imgTransformed[heightOrigin: heightOrigin + patchSize,
                                       widthOrigin: widthOrigin + patchSize]
 
-    H4Pt = pertubratedCorners - corners
+    H4Pt = np.subtract(pertubratedCorners, corners)
     H4Pt = np.reshape(H4Pt, 8)
 
     return patch, transformedPatch, H4Pt, np.array(corners)

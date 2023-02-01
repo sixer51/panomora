@@ -59,10 +59,10 @@ loss_window = vis.line(
     X=torch.zeros((1)).cpu(),
     opts=dict(xlabel='Iteration',ylabel='Loss',title='training loss',legend=['Loss'],layoutopts = layoutopts))
 
-val_loss_window = vis.line(
-    Y=torch.zeros((1)).cpu(),
-    X=torch.zeros((1)).cpu(),
-    opts=dict(xlabel='Iteration',ylabel='Loss',title='validation loss',legend=['Loss'],layoutopts = layoutopts))
+# val_loss_window = vis.line(
+#     Y=torch.zeros((1)).cpu(),
+#     X=torch.zeros((1)).cpu(),
+#     opts=dict(xlabel='Iteration',ylabel='Loss',title='validation loss',legend=['Loss'],layoutopts = layoutopts))
 
 # transform_norm = transforms.Compose([
 #     transforms.ToTensor(),
@@ -87,6 +87,7 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatc
     PatchBBatch = []
     PatchBatch = []
     CoordinatesBatch = []
+    cornersBatch = []
 
     ImageNum = 0
     while ImageNum < MiniBatchSize:
@@ -96,7 +97,7 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatc
         # print(len(DirNamesTrain), len(TrainCoordinates))
 
         RandImageName = BasePath + os.sep + DirNamesTrain[RandIdx] + ".jpg"
-        patchA, patchB, Coordinates, _ = dataGeneration(RandImageName)
+        patchA, patchB, Coordinates, corners = dataGeneration(RandImageName)
 
         # RandPatchA = BasePath + "/data_patch_train/patchA_"+ str(RandIdx) + ".jpg"
         # RandPatchB = BasePath + "/data_patch_train/patchB_"+ str(RandIdx) + ".jpg"
@@ -131,13 +132,20 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatc
 
         # PatchABatch.append(patchA)
         # PatchBBatch.append(patchB)
-        patchs = np.dstack((patchA, patchB))
-        PatchBatch.append(torch.from_numpy(np.float32(patchs)))
+        patchs = torch.from_numpy(np.dstack((patchA, patchB)))
+        # mean, std= torch.mean(patchs), torch.std(patchs)
+        # patchs = (patchs - mean.float() + 1e-7) / std.float()
+        PatchBatch.append(patchs)
 
-        CoordinatesBatch.append(torch.tensor(Coordinates))
+        Coordinates = torch.tensor(Coordinates)
+        # mean, std= torch.mean(Coordinates), torch.std(Coordinates)
+        # Coordinates = (Coordinates - mean.float() + 1e-7) / std.float()
+        CoordinatesBatch.append(Coordinates)
+
+        # corners = 
 
     # return torch.stack(PatchABatch), torch.stack(PatchBBatch), torch.stack(CoordinatesBatch).to(device)
-    return torch.stack(PatchBatch).to(device), torch.stack(CoordinatesBatch).to(device)
+    return torch.stack(PatchBatch).to(device), torch.stack(CoordinatesBatch).to(device) #, torch.stack(cornersBatch).to(device)
 
 
 def PrettyPrint(NumEpochs, DivTrain, MiniBatchSize, NumTrainSamples, LatestFile):
@@ -195,8 +203,8 @@ def TrainOperation(
     # Fill your optimizer of choice here!
     ###############################################
     # Optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
-    # Optimizer = torch.optim.SGD(model.parameters(), lr=0.001,momentum=0.9)
-    Optimizer = AdamW(model.parameters(), lr = 0.005)
+    Optimizer = torch.optim.SGD(model.parameters(), lr=0.0001,momentum=0.9)
+    # Optimizer = AdamW(model.parameters(), lr = 0.0001)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(Optimizer, milestones=[15, 25], gamma=0.1)
 
     # Tensorboard
@@ -230,7 +238,11 @@ def TrainOperation(
             # torch.cuda.empty_cache()
             print("training")
             model.train()
+            # torch.set_grad_enabled(True)
+
             Optimizer.zero_grad()
+            # patchs, homography = Batch
+            # LossThisBatch = model(patchs)
             LossThisBatch = model.training_step(Batch)
             # PredicatedCoordinatesBatch = model(I1Batch)
             # LossThisBatch = LossFn(PredicatedCoordinatesBatch, CoordinatesBatch)
@@ -239,24 +251,24 @@ def TrainOperation(
             LossThisBatch.backward()
             Optimizer.step()
 
-            print("validating")
-            model.eval()
-            with torch.no_grad():
-                result = model.validation_step(Batch)
+            # print("validating")
+            # model.eval()
+            # with torch.no_grad():
+            #     result = model.validation_step(Batch)
 
             # model.iteration_end(Epochs + 1, Epochs*NumIterationsPerEpoch + PerEpochCounter, MiniBatchSize, result)
-            loss_this_epoch += result["val_loss"]
+            # loss_this_epoch += result["val_loss"]
             vis.line(X=torch.ones((1,1)).cpu()*Epochs*NumIterationsPerEpoch + PerEpochCounter,Y=torch.Tensor([LossThisBatch]).unsqueeze(0).cpu() / MiniBatchSize,win=loss_window,update='append')
-            vis.line(X=torch.ones((1,1)).cpu()*Epochs*NumIterationsPerEpoch + PerEpochCounter,Y=torch.Tensor([result["val_loss"]]).unsqueeze(0).cpu()  / MiniBatchSize,win=val_loss_window,update='append')
+            # vis.line(X=torch.ones((1,1)).cpu()*Epochs*NumIterationsPerEpoch + PerEpochCounter,Y=torch.Tensor([result["val_loss"]]).unsqueeze(0).cpu()  / MiniBatchSize,win=val_loss_window,update='append')
             
             # Tensorboard
-            Writer.add_scalar(
-                "LossEveryIter",
-                result["val_loss"],
-                Epochs * NumIterationsPerEpoch + PerEpochCounter,
-            )
-            # If you don't flush the tensorboard doesn't update until a lot of iterations!
-            Writer.flush()
+            # Writer.add_scalar(
+            #     "LossEveryIter",
+            #     result["val_loss"],
+            #     Epochs * NumIterationsPerEpoch + PerEpochCounter,
+            # )
+            # # If you don't flush the tensorboard doesn't update until a lot of iterations!
+            # Writer.flush()
 
         # Save model every epoch
         SaveName = CheckPointPath + str(Epochs) + "model.ckpt"

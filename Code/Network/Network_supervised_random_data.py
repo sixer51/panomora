@@ -15,6 +15,7 @@ import sys
 import torch
 import numpy as np
 import torch.nn.functional as F
+# import pytorch_lightning as pl
 # import kornia  # You can use this to get the transform and warp in this project
 import math
 
@@ -22,7 +23,7 @@ import math
 sys.dont_write_bytecode = True
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def LossFn(homography, predHomography):
+def LossFn(predHomography, homography):
     ###############################################
     # Fill your loss function of choice here!
     ###############################################
@@ -41,6 +42,10 @@ def LossFn(homography, predHomography):
     # loss = torch.sum(torch.sub(predHomography, homography))
     # print(loss)
     # return loss
+    # print(torch.linalg.norm(torch.sub(predHomography, homography), dim = 0).shape)
+    # print(torch.linalg.norm(torch.sub(predHomography, homography), dim = 1).shape)
+    # return torch.sum(torch.linalg.norm(homography, dim = 1))
+    # print(torch.sum(torch.linalg.norm(homography, dim = 1)) / 64)
     return torch.sum(torch.linalg.norm(torch.sub(predHomography, homography), dim = 1))
     # return torch.sum(torch.linalg.norm(torch.sub(predHomography, homography) ** 2, dim = 1))
 
@@ -52,15 +57,15 @@ class HomographyModel(nn.Module):
         # self.hparams = hparams
         self.model = Net()
 
-    def forward(self, a, b):
-        return self.model(a, b)
+    def forward(self, x):
+        return self.model(x)
 
     def training_step(self, batch):
         # patchA, patchB, homography = batch
         # predHomography = self.model(patchA, patchB)
         patchs, homography = batch
         predHomography = self.model(patchs)
-        loss = LossFn(homography, predHomography)
+        loss = LossFn(predHomography, homography)
         logs = {"loss": loss}
         # return {"loss": loss, "log": logs}
         return loss
@@ -105,7 +110,6 @@ class Net(nn.Module):
             nn.Conv2d(2, 64, 3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
-            # nn.Dropout2d(0.5),
             nn.Conv2d(64, 64, 3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
