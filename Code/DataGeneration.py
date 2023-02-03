@@ -9,6 +9,7 @@ import copy
 def dataGeneration(imgPath, patchSize = 128, pertubation = 32):
     img = cv2.imread(imgPath)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    img = img[0:256, 0:256]
 
     imgHeight, imgWidth = img.shape
     # imgHeight, imgWidth, channel = img.shape
@@ -40,6 +41,7 @@ def dataGeneration(imgPath, patchSize = 128, pertubation = 32):
 
     M = cv2.getPerspectiveTransform(corners, pertubratedCorners)
     Minv = np.linalg.inv(M)
+    # transformedPatch = cv2.warpPerspective(patch, M, (patchSize, patchSize))
     imgTransformed = cv2.warpPerspective(img, Minv, (imgWidth, imgHeight))
     imgTransformedCorner = cv2.warpPerspective(imgCorner, Minv, (imgWidth, imgHeight))
     transformedPatch = imgTransformed[heightOrigin: heightOrigin + patchSize,
@@ -48,7 +50,7 @@ def dataGeneration(imgPath, patchSize = 128, pertubation = 32):
     H4Pt = np.subtract(pertubratedCorners, corners)
     H4Pt = np.reshape(H4Pt, 8)
 
-    return patch, transformedPatch, H4Pt, np.array(corners)
+    return patch, transformedPatch, H4Pt, np.array(corners), img, M
 
 # labelWriter = open("./Code/TxtFiles/LabelsTrainSupervised.txt", 'a')
 # for i in range(1, 5001):
