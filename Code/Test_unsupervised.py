@@ -27,7 +27,7 @@ import numpy as np
 import time
 from torchvision.transforms import ToTensor
 import argparse
-from Network.Network_supervised_random_data import HomographyModel
+from Network.Network_unsupervised import HomographyModel
 import shutil
 import string
 import math as m
@@ -103,24 +103,21 @@ def TestOperation(ModelPath):
     # OutSaveT = open(LabelsPathPred, "w")
     EPE_all = []
     for count in tqdm(range(30)):
-        # Img, Label = TestSet[count]
-        # Img, ImgOrg = ReadImages(Img)
-        # PredT = torch.argmax(model(Img)).item()
 
         # read image
         RandImageName = "../Data/Val/{}.jpg".format(count + 1)
-        # print(RandImageName)
-        patchA, patchB, H4Pts, cornersA = dataGeneration(RandImageName)
-        patchs = np.dstack((patchA, patchB))
-        patchs = torch.from_numpy(np.expand_dims(patchs, axis=0)).to(device)
-        # patchA = torch.from_numpy(np.expand_dims(patchA, axis=0))
-        # patchB = torch.from_numpy(np.expand_dims(patchB, axis=0))
+
+        patchA, patchB, H4Pts, cornersA, _, _ = dataGeneration(RandImageName)
+        # patchs = np.dstack((patchA, patchB))
+        # patchs = torch.from_numpy(np.expand_dims(patchs, axis=0)).to(device)
+        patchA = torch.from_numpy(np.expand_dims(patchA, axis=0)).float().to(device)
+        patchB = torch.from_numpy(np.expand_dims(patchB, axis=0)).float().to(device)
         H4Pts = torch.tensor(H4Pts)
 
         model.eval()
         with torch.no_grad():
-            # Pred = model(patchA, patchB)
-            Pred = model(patchs)
+            Pred = model(patchA, patchB)
+            # Pred = model(patchs)
         EPE = torch.sum(torch.linalg.norm(torch.sub(Pred.to("cpu"), H4Pts), dim = 1)).item()
         # accuracy = Accuracy(Pred.to("cpu").detach().numpy(), Coordinates.detach().numpy())
         print("idx: {}, error = {}".format(count, EPE))
@@ -145,17 +142,6 @@ def TestOperation(ModelPath):
     print("average EPE: {}".format(EPE_aver))
 
 
-def Accuracy(Pred, GT):
-    """
-    Inputs:
-    Pred are the predicted labels
-    GT are the ground truth labels
-    Outputs:
-    Accuracy in percentage
-    """
-    return np.sum(np.array(Pred) == np.array(GT)) * 100.0 / len(Pred)
-
-
 def ReadLabels(LabelsPathTest, LabelsPathPred):
     if not (os.path.isfile(LabelsPathTest)):
         print("ERROR: Test Labels do not exist in " + LabelsPathTest)
@@ -176,29 +162,6 @@ def ReadLabels(LabelsPathTest, LabelsPathPred):
     return LabelTest, LabelPred
 
 
-def ConfusionMatrix(LabelsTrue, LabelsPred):
-    """
-    LabelsTrue - True labels
-    LabelsPred - Predicted labels
-    """
-
-    # Get the confusion matrix using sklearn.
-    LabelsTrue, LabelsPred = list(LabelsTrue), list(LabelsPred)
-    cm = confusion_matrix(
-        y_true=LabelsTrue, y_pred=LabelsPred  # True class for test-set.
-    )  # Predicted class.
-
-    # Print the confusion matrix as text.
-    for i in range(10):
-        print(str(cm[i, :]) + " ({0})".format(i))
-
-    # Print the class-numbers for easy reference.
-    class_numbers = [" ({0})".format(i) for i in range(10)]
-    print("".join(class_numbers))
-
-    print("Accuracy: " + str(Accuracy(LabelsPred, LabelsTrue)), "%")
-
-
 def main():
     """
     Inputs:
@@ -212,7 +175,8 @@ def main():
     Parser.add_argument(
         "--ModelPath",
         dest="ModelPath",
-        default="../Checkpoints_l2_square/26model.ckpt",
+        default="../Checkpoints_unsupervised_dropout/49model.ckpt",
+        # default="../Checkpoints_l2_square/26model.ckpt",
         help="Path to load latest model from, Default:ModelPath",
     )
     Parser.add_argument(
@@ -240,10 +204,6 @@ def main():
     # LabelsPathPred = "./TxtFiles/PredOut.txt"  # Path to save predicted labels
 
     TestOperation(ModelPath)
-
-    # Plot Confusion Matrix
-    # LabelsTrue, LabelsPred = ReadLabels(LabelsPath, LabelsPathPred)
-    # ConfusionMatrix(LabelsTrue, LabelsPred)
 
 
 if __name__ == "__main__":

@@ -59,17 +59,12 @@ loss_window = vis.line(
     X=torch.zeros((1)).cpu(),
     opts=dict(xlabel='Iteration',ylabel='Loss',title='training loss',legend=['Loss'],layoutopts = layoutopts))
 
-# val_loss_window = vis.line(
-#     Y=torch.zeros((1)).cpu(),
-#     X=torch.zeros((1)).cpu(),
-#     opts=dict(xlabel='Iteration',ylabel='Loss',title='validation loss',legend=['Loss'],layoutopts = layoutopts))
+val_loss_window = vis.line(
+    Y=torch.zeros((1)).cpu(),
+    X=torch.zeros((1)).cpu(),
+    opts=dict(xlabel='Iteration',ylabel='Loss',title='validation loss',legend=['Loss'],layoutopts = layoutopts))
 
-# transform_norm = transforms.Compose([
-#     transforms.ToTensor(),
-#     transforms.Normalize(mean, std)
-# ])
-
-def GenerateBatch(BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatchSize):
+def GenerateBatch(BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatchSize, Epochs):
     """
     Inputs:
     BasePath - Path to COCO folder without "/" at the end
@@ -99,7 +94,11 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatc
         # print(len(DirNamesTrain), len(TrainCoordinates))
 
         RandImageName = BasePath + os.sep + DirNamesTrain[RandIdx] + ".jpg"
-        patchA, patchB, Coordinates, corners, img, H = dataGeneration(RandImageName)
+        if Epochs < 30:
+            pertub = 4 * (Epochs // 3 + 1)
+        else:
+            pertub = 32
+        patchA, patchB, Coordinates, corners, img, H = dataGeneration(RandImageName, pertubation=pertub)
 
         # RandPatchA = BasePath + "/data_patch_train/patchA_"+ str(RandIdx) + ".jpg"
         # RandPatchB = BasePath + "/data_patch_train/patchB_"+ str(RandIdx) + ".jpg"
@@ -116,21 +115,16 @@ def GenerateBatch(BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatc
         patchA = torch.from_numpy(np.float32(patchA))
         # patchA_mean = patchA.mean(dim=[0,1])
         # patchA_std = patchA.std(dim=[0,1])
-        # patchA_transform = transforms.Compose([
-        #                 transforms.Normalize(mean=[0.5,0.5,0.5],std=[0.5,0.5,0.5])
-        #             ])
-        # # patchA_transform = transforms.Normalize(patchA_mean,patchA_std)
-        # patchA = patchA.view(3,128,128)
-        # patchA = patchA_transform(patchA)
-        # # patchA = patchA.view(128,128,3)
+        # if patchA_std < 0.01: patchA_std = 0.01
+        # patchA_transform = transforms.Normalize(patchA_mean,patchA_std)
+        # patchA = patchA_transform(patchA.unsqueeze(0))
 
         patchB = torch.from_numpy(np.float32(patchB))
         # patchB_mean = patchB.mean(dim=[0,1])
         # patchB_std = patchB.std(dim=[0,1])
-        # patchB_transform = transforms.Normalize(mean=[0.5,0.5,0.5],std=[0.5,0.5,0.5])
-        # patchB = patchB.view(3,128,128)
-        # patchB = patchB_transform(patchB)
-        # # patchB = patchB.view(128,128,3)
+        # if patchB_std < 0.01: patchB_std = 0.01
+        # patchB_transform = transforms.Normalize(patchB_mean,patchB_std)
+        # patchB = patchB_transform(patchB.unsqueeze(0))
 
         PatchABatch.append(patchA)
         PatchBBatch.append(patchB)
@@ -210,54 +204,39 @@ def TrainOperation(
     # Fill your optimizer of choice here!
     ###############################################
     # Optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
-    Optimizer = torch.optim.SGD(model.parameters(), lr=0.0005,momentum=0.9)
-    # Optimizer = AdamW(model.parameters(), lr = 0.0001)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(Optimizer, milestones=[15, 25], gamma=0.1)
+    # Optimizer = torch.optim.SGD(model.parameters(), lr=0.0005,momentum=0.9)
+    Optimizer = AdamW(model.parameters(), lr = 0.00005, betas=(0.9, 0.999), eps=1e-08)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(Optimizer, milestones=[30, 40], gamma=0.1)
 
     # Tensorboard
     # Create a summary to monitor loss tensor
     Writer = SummaryWriter(LogsPath)
 
-    # if LatestFile is not None:
-    #     CheckPoint = torch.load(CheckPointPath + LatestFile + ".ckpt")
-    #     # Extract only numbers from the name
-    #     StartEpoch = int("".join(c for c in LatestFile.split("a")[0] if c.isdigit()))
-    #     model.load_state_dict(CheckPoint["model_state_dict"])
-    #     print("Loaded latest checkpoint with the name " + LatestFile + "....")
-    # else:
-    StartEpoch = 0
-    print("New model initialized....")
-
-    # CheckPoint = torch.load("../Checkpoints_l2_square/2model.ckpt")
-    # StartEpoch = 0
-    # model.load_state_dict(CheckPoint["model_state_dict"])
-    # print("Loaded a checkpoint")
+    if LatestFile is not None:
+        CheckPoint = torch.load(CheckPointPath + LatestFile + ".ckpt")
+        StartEpoch = int("".join(c for c in LatestFile.split("a")[0] if c.isdigit()))
+        model.load_state_dict(CheckPoint["model_state_dict"])
+        print("Loaded latest checkpoint with the name " + LatestFile + "....")
+    else:
+        StartEpoch = 0
+        print("New model initialized....")
 
     loss_all = []
     for Epochs in tqdm(range(StartEpoch, NumEpochs)):
         NumIterationsPerEpoch = int(NumTrainSamples / MiniBatchSize / DivTrain)
         loss_this_epoch = 0
-        # Batch = GenerateBatch(
-        #     BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatchSize
-        # )
         for PerEpochCounter in tqdm(range(NumIterationsPerEpoch)):
             # I1Batch, CoordinatesBatch = GenerateBatch(
             Batch = GenerateBatch(
-                BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatchSize
+                BasePath, DirNamesTrain, TrainCoordinates, ImageSize, MiniBatchSize, Epochs
             )
 
             # Predict output with forward pass
-            # torch.cuda.empty_cache()
-            print("training")
             model.train()
             # torch.set_grad_enabled(True)
 
             Optimizer.zero_grad()
-            # patchs, homography = Batch
-            # LossThisBatch = model(patchs)
             LossThisBatch = model.training_step(Batch, Epochs*NumIterationsPerEpoch + PerEpochCounter)
-            # PredicatedCoordinatesBatch = model(I1Batch)
-            # LossThisBatch = LossFn(PredicatedCoordinatesBatch, CoordinatesBatch)
 
             # Optimizer.zero_grad()
             LossThisBatch.backward()
@@ -266,13 +245,12 @@ def TrainOperation(
             # print("validating")
             # model.eval()
             # with torch.no_grad():
-            #     result = model.validation_step(Batch)
+            #     result = model.validation_step(Batch, Epochs*NumIterationsPerEpoch + PerEpochCounter)
 
             # model.iteration_end(Epochs + 1, Epochs*NumIterationsPerEpoch + PerEpochCounter, MiniBatchSize, result)
             # loss_this_epoch += result["val_loss"]
             vis.line(X=torch.ones((1,1)).cpu()*Epochs*NumIterationsPerEpoch + PerEpochCounter,Y=torch.Tensor([LossThisBatch]).unsqueeze(0).cpu(),win=loss_window,update='append')
-            # vis.line(X=torch.ones((1,1)).cpu()*Epochs*NumIterationsPerEpoch + PerEpochCounter,Y=torch.Tensor([LossThisBatch]).unsqueeze(0).cpu() / MiniBatchSize,win=loss_window,update='append')
-            # vis.line(X=torch.ones((1,1)).cpu()*Epochs*NumIterationsPerEpoch + PerEpochCounter,Y=torch.Tensor([result["val_loss"]]).unsqueeze(0).cpu()  / MiniBatchSize,win=val_loss_window,update='append')
+            # vis.line(X=torch.ones((1,1)).cpu()*Epochs*NumIterationsPerEpoch + PerEpochCounter,Y=torch.Tensor([result["val_loss"]]).unsqueeze(0).cpu(),win=val_loss_window,update='append')
             
             # Tensorboard
             # Writer.add_scalar(
@@ -282,6 +260,12 @@ def TrainOperation(
             # )
             # # If you don't flush the tensorboard doesn't update until a lot of iterations!
             # Writer.flush()
+        
+        model.eval()
+        with torch.no_grad():
+            result = model.validation_step(Batch, Epochs)
+        vis.line(X=torch.ones((1,1)).cpu()*Epochs,Y=torch.Tensor([result["val_loss"]]).unsqueeze(0).cpu(),win=val_loss_window,update='append')
+
 
         # Save model every epoch
         SaveName = CheckPointPath + str(Epochs) + "model.ckpt"
@@ -325,7 +309,7 @@ def main():
     )
     Parser.add_argument(
         "--CheckPointPath",
-        default="../Checkpoints_unsupervised/",
+        default="../Checkpoints_unsupervised_adam/",
         help="Path to save Checkpoints, Default: ../Checkpoints/",
     )
 
@@ -337,7 +321,7 @@ def main():
     Parser.add_argument(
         "--NumEpochs",
         type=int,
-        default=30,
+        default=50,
         help="Number of Epochs to Train for, Default:50",
     )
     Parser.add_argument(
@@ -349,7 +333,7 @@ def main():
     Parser.add_argument(
         "--MiniBatchSize",
         type=int,
-        default=64,
+        default=128,
         help="Size of the MiniBatch to use, Default:1",
     )
     Parser.add_argument(

@@ -64,36 +64,105 @@ def LossFn(predH4Pts, corners, imgA, patchB, iter, h4pt, homo):
     print(h4pt[0])
     batchSize = predH4Pts.size()[0]
 
+    # cornersB = corners + h4pt.view(-1, 4, 2)
     cornersB = corners + predH4Pts.view(-1, 4, 2)
+    # print(cornersB[0])
+    # print(corners[0])
+    # cornersB = corners + predH4Pts.reshape(batchSize, 4, 2)
+    # print(corners.size())
+    # print(cornersB.size())
+    # corners = corners - corners[:, 0].view(-1, 1, 2)
+
+    # H_kor = kornia.geometry.transform.get_perspective_transform(corners, cornersB)
     H = SolveDLT(corners, cornersB).to(device)
+    # print(H[0])
+    # print(H_kor[0])
+    # print(H.size())
+    # print(H_kor.size())
+    # print(homo[0])
     Hinv = torch.inverse(H)
+    # Hinv_kor = torch.inverse(H_kor)
+    # print(Hinv[0])
+    # print(Hinv_kor[0])
+    # print(homo[0])
 
+    # patchSize = patchA.size()[-1]
+    # M = torch.tensor([[patchSize / 2.0, 0., patchSize / 2.0],
+    #                   [0., patchSize / 2.0, patchSize / 2.0],
+    #                   [0., 0., 1]]).to(device)
+    # Mbatch = M.unsqueeze(0).expand(batchSize, M.shape[-2], M.shape[-1])
+    # Minv = torch.inverse(Mbatch)
+    # HinvPred = torch.mul(Minv, torch.mul(Hinv, Mbatch))
 
+    # imgA = torch.unsqueeze(imgA, dim = 1)
+    # patchA = torch.unsqueeze(patchA, dim = 1)
+    patchB = torch.unsqueeze(patchB, dim = 1)
+    # img = torch.tensor(imgA[i]).unsqueeze(0).unsqueeze(0).to(device)
+    # print(img.size())
+
+    # grid = F.affine_grid(HinvPred, patchA.size())
+    # patchAwarp = F.grid_sample(patchA, grid)
+    padSize = 64
+    canvasSize = 128 + padSize * 2
+
+    # canvas = torch.zeros(batchSize, 1, canvasSize, canvasSize).to(device)
+    # for i in range(batchSize):
+    #     x = int(corners[i][0][0].item())
+    #     y = int(corners[i][0][1].item())
+    #     # print(x, y)
+    #     canvas[i, 0, y:y+128, x:x+128] = patchA[i, 0, :, :]
+    # print(canvas.size())
+    # canvas[:,:,padSize:padSize+128,padSize:padSize+128] = patchA
+    # pad = nn.ZeroPad2d(padSize)
+    # canvas = pad(patchA)
+    # print(canvas.size())
+
+    # patchAwarp = kornia.geometry.transform.warp_perspective(imgA, Hinv, (imgA.size()[-2], imgA.size()[-1]))
+    # patchAwarp = kornia.geometry.transform.warp_perspective(patchA, HinvPred, (128, 128))
+    # patchAwarp = kornia.geometry.transform.warp_perspective(patchA, Hinv, (128, 128)) #, padding_mode='reflection')#, align_corners=False)
+    # patchAwarp = kornia.geometry.transform.warp_perspective(canvas, Hinv, (canvasSize, canvasSize)) #, padding_mode='reflection')#, align_corners=False)
+    # print(patchAwarp.size())
+    # patchAwarp = patchAwarp[:,:,padSize:padSize+128,padSize:padSize+128]
+    # print(patchAwarp.size())
     patchAwarpCrop = torch.zeros(batchSize, 1, 128, 128).to(device)
     for i in range(batchSize):
         x = int(corners[i][0][0].item())
         y = int(corners[i][0][1].item())
         img = torch.tensor(imgA[i]).float().to(device).unsqueeze(0).unsqueeze(0)
 
+        # print(img.size())
+        # img = torch.unsqueeze(img, dim = 1)
         patchAwarp = kornia.geometry.transform.warp_perspective(img, Hinv[i].unsqueeze(0), (img.size()[-2], img.size()[-1]))
         patchAwarpCrop[i, 0, :, :] = patchAwarp[0, 0, y:y+128, x:x+128]
 
-    # img_both = cv2.hconcat([copy.copy(patchAwarpCrop[0][0]).cpu().detach().numpy(), copy.copy(patchB[0][0]).cpu().detach().numpy()])
-    # cv2.imwrite("../Data/patchAwarpB{}.jpg".format(iter), img_both)
+    img_both = cv2.hconcat([copy.copy(patchAwarpCrop[0][0]).cpu().detach().numpy(), copy.copy(patchB[0][0]).cpu().detach().numpy()])
+    cv2.imwrite("../Data/patchAwarpB{}.jpg".format(iter), img_both)
 
-    patchB = torch.unsqueeze(patchB, dim = 1)
+    # for i in range(batchSize):
+    #     img_both = cv2.hconcat([copy.copy(patchAwarpCrop[i][0]).cpu().detach().numpy(), copy.copy(patchB[i][0]).cpu().detach().numpy(), copy.copy(patchA[i][0]).cpu().detach().numpy()])
+    #     cv2.imwrite("../Data/patchAwarpB{}.jpg".format(i), img_both)
+
+    # cv2.imwrite("../Data/patchAwarp{}.jpg".format(iter), copy.copy(patchAwarp[0][0]).cpu().detach().numpy())
+    # cv2.imwrite("../Data/patchB{}.jpg".format(iter), copy.copy(patchB[0][0]).cpu().detach().numpy())
+    # print(patchAwarp.size())
+    # print(patchA.size())
+    # MSE = nn.MSELoss()
+    # print(MSE(patchB, patchAwarp))
 
     loss = nn.L1Loss()
     return loss(patchAwarpCrop, patchB)
+    # return torch.nn.functional.l1_loss(patchAwarp, patchB)
 
 
 class HomographyModel(nn.Module):
     def __init__(self):
+    # def __init__(self, hparams):
         super(HomographyModel, self).__init__()
+        # self.hparams = hparams
         self.model = Net()
 
-    def forward(self, xa, xb):
-        return self.model(xa, xb)
+    # def forward(self, x):
+    #     return self.model(x)
 
     def training_step(self, batch, iter):
         patchA, patchB, h4pt, corners, img, homography = batch
@@ -106,16 +175,16 @@ class HomographyModel(nn.Module):
         # return {"loss": loss, "log": logs}
         return loss
 
-    def validation_step(self, batch, iter):
-        patchA, patchB, h4pt, corners, img, homography = batch
-        predHomography = self.model(patchA, patchB)
-        # patchs, homography = batch
-        # predHomography = self.model(patchs)
-        loss = LossFn(predHomography, corners, img, patchB, iter, h4pt, homography)
-        # img_a, patch_a, patch_b, corners, gt = batch
-        # delta = self.model(patch_a, patch_b)
-        # loss = LossFn(delta, img_a, patch_b, corners)
-        return {"val_loss": loss}
+    # def validation_step(self, batch, iter):
+    #     patchA, patchB, homography, corners, img = batch
+    #     predHomography = self.model(patchA, patchB)
+    #     # patchs, homography = batch
+    #     # predHomography = self.model(patchs)
+    #     loss = LossFn(predHomography, corners, patchA, patchB, iter, homography)
+    #     # img_a, patch_a, patch_b, corners, gt = batch
+    #     # delta = self.model(patch_a, patch_b)
+    #     # loss = LossFn(delta, img_a, patch_b, corners)
+    #     return {"val_loss": loss}
 
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
@@ -195,7 +264,8 @@ class Net(nn.Module):
         #############################
 
         x = torch.stack((xa, xb), dim=1)
-        # x = torch.cat((xa, xb), dim=1)
+        # print(xa.size(), xb.size(), x.size())
+        # x = x.permute(0,3,1,2).float()
         out = self.network(x)
 
         return out

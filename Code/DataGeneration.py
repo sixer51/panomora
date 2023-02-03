@@ -9,7 +9,7 @@ import copy
 def dataGeneration(imgPath, patchSize = 128, pertubation = 32):
     img = cv2.imread(imgPath)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    img = img[0:256, 0:256]
+    # img = img[0:256, 0:256]
 
     imgHeight, imgWidth = img.shape
     # imgHeight, imgWidth, channel = img.shape
@@ -34,8 +34,8 @@ def dataGeneration(imgPath, patchSize = 128, pertubation = 32):
         y = min(imgHeight, max(0, corner[1] + random.randint(-pertubation, pertubation)))
         pertubratedCorner = (x, y)
         pertubratedCorners.append(pertubratedCorner)
-        imgCorner = cv2.circle(imgCorner, corner, radius=3, color=(255, 0, 0), thickness=-1)
-        imgCorner = cv2.circle(imgCorner, pertubratedCorner, radius=3, color=(0, 0, 255), thickness=-1)
+        # imgCorner = cv2.circle(imgCorner, corner, radius=3, color=(255, 0, 0), thickness=-1)
+        # imgCorner = cv2.circle(imgCorner, pertubratedCorner, radius=3, color=(0, 0, 255), thickness=-1)
     corners = np.float32(corners)
     pertubratedCorners = np.float32(pertubratedCorners)
 
@@ -43,7 +43,7 @@ def dataGeneration(imgPath, patchSize = 128, pertubation = 32):
     Minv = np.linalg.inv(M)
     # transformedPatch = cv2.warpPerspective(patch, M, (patchSize, patchSize))
     imgTransformed = cv2.warpPerspective(img, Minv, (imgWidth, imgHeight))
-    imgTransformedCorner = cv2.warpPerspective(imgCorner, Minv, (imgWidth, imgHeight))
+    # imgTransformedCorner = cv2.warpPerspective(imgCorner, Minv, (imgWidth, imgHeight))
     transformedPatch = imgTransformed[heightOrigin: heightOrigin + patchSize,
                                       widthOrigin: widthOrigin + patchSize]
 
@@ -52,14 +52,3 @@ def dataGeneration(imgPath, patchSize = 128, pertubation = 32):
 
     return patch, transformedPatch, H4Pt, np.array(corners), img, M
 
-# labelWriter = open("./Code/TxtFiles/LabelsTrainSupervised.txt", 'a')
-# for i in range(1, 5001):
-#     imgPath = "../Data/Train/{}.jpg".format(i)
-#     patchSize = 128
-#     pertubation = 32
-#     patch, transformedPatch, H4Pt, _ = dataGeneration(imgPath, patchSize, pertubation)
-
-#     H4PtStr = np.array2string(H4Pt, separator=',')[1: -1] + '\n'
-#     labelWriter.writelines(H4PtStr)
-#     cv2.imwrite("../Data/data_patch_train/patchA_{}.jpg".format(i), patch)
-#     cv2.imwrite("../Data/data_patch_train/patchB_{}.jpg".format(i), transformedPatch)
